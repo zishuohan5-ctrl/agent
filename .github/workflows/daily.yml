@@ -1,26 +1,20 @@
 name: Daily-Agent
 on:
-  schedule:
-    - cron: '0 1 * * *' # 每天早上自动运行
-  workflow_dispatch:     # 允许手动按钮运行
+  workflow_dispatch:
 
 jobs:
-  run-it:
+  test-push:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v3
-
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-
-      - name: Install dependencies
+      - name: Install
         run: pip install requests huggingface_hub
-
-      - name: Run script
+      - name: Run
         env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           PUSH_KEY: ${{ secrets.PUSH_KEY }}
         run: python agent_daily.py
