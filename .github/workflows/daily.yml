@@ -1,5 +1,7 @@
 name: Daily-Agent
 on:
+  schedule:
+    - cron: '0 3 * * *' # 这里的 3:00 UTC 时间 = 北京时间 11:00
   workflow_dispatch:
 
 jobs:
