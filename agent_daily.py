@@ -1,45 +1,49 @@
 import os
 import requests
 from huggingface_hub import list_papers
+from datetime import datetime, timedelta
 
-def get_hf_papers():
-    """获取 Hugging Face 论文列表（兼容性最强版本）"""
+def get_specialized_papers():
+    """精准抓取 Agent, RL, LLM 领域的论文"""
+    # 定义你关心的关键词
+    keywords = ["Agent", "Reinforcement Learning", "LLM"]
+    results = []
+    seen_ids = set()
+    
+    print(f"正在抓取领域相关论文: {keywords}...")
+    
     try:
-        print("正在从 Hugging Face 获取最新论文列表...")
-        # 移除了所有可能导致版本冲突的参数
-        papers = list_papers()
-        
-        results = []
-        count = 0
-        for p in papers:
-            if count >= 5: break  # 选取前 5 篇
-            results.append({
-                "title": p.title, 
-                "url": f"https://huggingface.co/papers/{p.id}"
-            })
-            count += 1
+        for word in keywords:
+            # 使用 search 参数解决接口报错
+            # 这里的 search 会过滤出包含关键词的最新论文
+            papers = list_papers(search=word)
+            
+            count = 0
+            for p in papers:
+                if count >= 3: break # 每个领域抓前 3 篇，避免消息太长
+                if p.id not in seen_ids:
+                    results.append({
+                        "domain": word,
+                        "title": p.title,
+                        "url": f"https://huggingface.co/papers/{p.id}"
+                    })
+                    seen_ids.add(p.id)
+                    count += 1
         return results
     except Exception as e:
         print(f"获取论文失败: {e}")
         return []
 
 def ask_ai(content):
-    """调用 DeepSeek 对昨日论文进行总结"""
+    """调用 DeepSeek 进行专业总结"""
     api_key = os.environ.get('DEEPSEEK_API_KEY')
-    if not api_key:
-        return "错误：未检测到 DEEPSEEK_API_KEY。"
-    
     url = "https://api.deepseek.com/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}", 
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
-    # 提示词已更新，专注于总结昨日论文
     prompt = (
-        "你是一个专业的 AI 科研助手。请针对以下提供的【昨日】Hugging Face 热门论文列表，"
-        "将其标题翻译成中文，并用通俗易懂的一句话概括每篇论文的核心创新点。"
-        "格式要求：\n1. [中文标题]\n   创新点：xxx\n\n"
+        "你是一个顶级的 AI 研究助手。请针对以下提供的 Agent、RL、LLM 领域的论文列表，"
+        "将其标题翻译成中文，并用一句话说明该论文对该领域的研究者有什么启发。"
+        "要求：内容要硬核，不要套话。\n\n"
         f"论文列表如下：\n{content}"
     )
     
@@ -56,42 +60,34 @@ def ask_ai(content):
         return f"AI 总结出错: {str(e)}"
 
 def send_to_wechat(msg):
-    """通过 pushplus 发送到微信"""
+    """发送到微信"""
     token = os.environ.get('PUSH_KEY')
-    if not token:
-        print("错误：未检测到 PUSH_KEY")
-        return
-
     url = 'http://www.pushplus.plus/send'
     payload = {
-        "token": token,
-        "title": "🤖 昨日 AI 论文精选总结",
-        "content": msg,
+        "token": token, 
+        "title": "🎯 定制 AI 论文速递 (Agent/RL/LLM)", 
+        "content": msg, 
         "template": "markdown"
     }
-    
-    try:
-        res = requests.post(url, json=payload)
-        print(f"Pushplus 发送反馈: {res.text}")
-    except Exception as e:
-        print(f"发送微信失败: {e}")
+    res = requests.post(url, json=payload)
+    print(f"Pushplus 反馈: {res.text}")
 
 if __name__ == "__main__":
-    # 1. 获取论文
-    papers_list = get_hf_papers()
+    # 1. 获取指定领域的论文
+    papers = get_specialized_papers()
     
-    if papers_list:
+    if papers:
+        # 2. 格式化给 AI
         raw_text = ""
-        for p in papers_list:
-            raw_text += f"- {p['title']} (原文链接: {p['url']})\n"
+        for p in papers:
+            raw_text += f"领域 [{p['domain']}]: {p['title']} (原文: {p['url']})\n"
         
-        print(f"成功获取 {len(papers_list)} 篇论文，正在请求 DeepSeek 进行昨日论文总结...")
+        print("正在进行深度总结...")
+        # 3. AI 总结
+        summary = ask_ai(raw_text)
         
-        # 2. AI 总结
-        final_summary = ask_ai(raw_text)
-        
-        # 3. 推送到微信
-        send_to_wechat(final_summary)
-        print("所有任务已完成！")
+        # 4. 推送
+        send_to_wechat(summary)
+        print("任务完成！")
     else:
-        print("未能获取到论文数据，请检查网络或库设置。")
+        print("今日未找到相关领域的更新。")
