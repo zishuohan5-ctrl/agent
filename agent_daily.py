@@ -1,50 +1,52 @@
 import os
 import requests
-from huggingface_hub import list_papers
 from datetime import datetime, timedelta
 
 def get_specialized_papers():
-    """精准抓取 Agent, RL, LLM 领域的论文"""
-    # 定义你关心的关键词
-    keywords = ["Agent", "Reinforcement Learning", "LLM"]
+    """使用最原始的 API 请求方式，绕过库版本问题"""
+    # 定义搜索关键词
+    queries = ["Agent", "Reinforcement", "LLM"]
     results = []
     seen_ids = set()
     
-    print(f"正在抓取领域相关论文: {keywords}...")
+    print(f"正在通过 API 检索领域论文: {queries}...")
     
-    try:
-        for word in keywords:
-            # 使用 search 参数解决接口报错
-            # 这里的 search 会过滤出包含关键词的最新论文
-            papers = list_papers(search=word)
+    for q in queries:
+        try:
+            # 直接访问 Hugging Face 的 API 接口
+            url = f"https://huggingface.co/api/papers?search={q}"
+            response = requests.get(url, timeout=15)
+            papers = response.json()
             
             count = 0
             for p in papers:
-                if count >= 3: break # 每个领域抓前 3 篇，避免消息太长
-                if p.id not in seen_ids:
+                if count >= 3: break  # 每个领域取前 3 篇
+                paper_id = p.get('id')
+                if paper_id and paper_id not in seen_ids:
                     results.append({
-                        "domain": word,
-                        "title": p.title,
-                        "url": f"https://huggingface.co/papers/{p.id}"
+                        "domain": q,
+                        "title": p.get('title', 'No Title'),
+                        "url": f"https://huggingface.co/papers/{paper_id}"
                     })
-                    seen_ids.add(p.id)
+                    seen_ids.add(paper_id)
                     count += 1
-        return results
-    except Exception as e:
-        print(f"获取论文失败: {e}")
-        return []
+        except Exception as e:
+            print(f"抓取关键词 {q} 失败: {e}")
+            
+    return results
 
 def ask_ai(content):
-    """调用 DeepSeek 进行专业总结"""
+    """调用 DeepSeek 进行硬核总结"""
     api_key = os.environ.get('DEEPSEEK_API_KEY')
+    if not api_key: return "未检测到 API Key"
+    
     url = "https://api.deepseek.com/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
     prompt = (
         "你是一个顶级的 AI 研究助手。请针对以下提供的 Agent、RL、LLM 领域的论文列表，"
-        "将其标题翻译成中文，并用一句话说明该论文对该领域的研究者有什么启发。"
-        "要求：内容要硬核，不要套话。\n\n"
-        f"论文列表如下：\n{content}"
+        "将其标题翻译成中文，并用一句话说明该论文对该领域的研究者有什么启发。\n\n"
+        f"论文列表：\n{content}"
     )
     
     data = {
@@ -60,7 +62,7 @@ def ask_ai(content):
         return f"AI 总结出错: {str(e)}"
 
 def send_to_wechat(msg):
-    """发送到微信"""
+    """通过 pushplus 发送"""
     token = os.environ.get('PUSH_KEY')
     url = 'http://www.pushplus.plus/send'
     payload = {
@@ -73,21 +75,15 @@ def send_to_wechat(msg):
     print(f"Pushplus 反馈: {res.text}")
 
 if __name__ == "__main__":
-    # 1. 获取指定领域的论文
     papers = get_specialized_papers()
-    
     if papers:
-        # 2. 格式化给 AI
         raw_text = ""
         for p in papers:
-            raw_text += f"领域 [{p['domain']}]: {p['title']} (原文: {p['url']})\n"
+            raw_text += f"[{p['domain']}] {p['title']}\n链接: {p['url']}\n"
         
-        print("正在进行深度总结...")
-        # 3. AI 总结
+        print(f"成功获取 {len(papers)} 篇论文，正在请求 AI 总结...")
         summary = ask_ai(raw_text)
-        
-        # 4. 推送
         send_to_wechat(summary)
-        print("任务完成！")
+        print("所有流程已完成！")
     else:
-        print("今日未找到相关领域的更新。")
+        print("今日未找到相关更新。")
