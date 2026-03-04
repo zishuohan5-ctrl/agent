@@ -1,8 +1,8 @@
 name: Daily-Agent
 on:
   schedule:
-    - cron: '0 1 * * *' # 每天北京时间早上 9:00 自动运行
-  workflow_dispatch:     # 允许你在 Actions 页面手动点按钮运行
+    - cron: '0 1 * * *' # 每天早上自动运行
+  workflow_dispatch:     # 允许手动按钮运行
 
 jobs:
   run-it:
